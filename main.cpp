@@ -1,47 +1,66 @@
 #include <iostream>
 #include <fstream>
-#include "mfhdf.h"
+#include "modis_hdf.h"
+#include "modis_resamp.h"
 
 int main (int argc, char *argv[]){
 
-	char infile [240], name[240], attrb_name[80] ;
-	int i ;
-	int32 status, sd_id, sds_id, n_fileattrs, n_datasets ;
-	int32 attnum, sd_therm_bands, num_type=0 ;
-	int32 data_type, n_values, rank=0, dim_sizes[5], attributes=0 ;
-	float *rad_scales_emiss ;
+	char *tmp ;
+	float startx, starty, endx, endy, gspace ;
+	
+	modis_hdf *geom, *therm ;
+	modis_resamp *mresamp ;
+	// input file is the list of files to process
+	char outpref[380], outfile[420], tmpfile[420], infile [420], file0[240], file1[240], sub1[24], sub2[24] ;
+
+	if (argc < 6) {
+		cout << "Useage :modis_resamp outpref infilelist startx starty endx endy gridspace" << endl ;
+		exit (-1) ;
+	}
+	strcpy (infile, *++argv) ;
+	strcpy (outpref, *++argv) ;
+	startx = atof (*++argv) ;
+	starty = atof (*++argv) ;
+	endx = atof (*++argv) ;
+	endy = atof (*++argv) ;
+	gspace = atof (*++argv) ;
 
 
-	// ensure input file can be read
-	strcpy (infile, "/home/harold/data/hawaii/MOD021KM.A2014359.2035.061.2017317151219.hdf") ;
-	sd_id = SDstart (infile, DFACC_RDONLY) ;
-	if (sd_id <= 0) {
-		printf ("Problem with %s\r\n", infile) ;
+
+
+	mresamp = new modis_resamp() ;
+	FILE *fin = fopen (infile, "r") ;
+	if (fin == NULL) {
+		cout << "Could not open input file" << endl ;
 		exit(-1) ;
 	}
-	printf ("Status is %d\r\n", sd_id) ;
-	
-	// get the number of datasets and file attributes
-	status = SDfileinfo (sd_id, &n_datasets, &n_fileattrs) ;
-	printf ("Number of datasets is : %d\r\n",n_datasets) ;
-	printf ("Number of fileattrs is : %d\r\n",n_fileattrs) ;
+	while (!feof(fin)) {
+		fscanf (fin, "%s %s", file0, file1) ;
+		strcpy (tmpfile, file0) ;
+		tmp = strtok (tmpfile, ".") ;
+		tmp = strtok (NULL, ".") ;
+		strcpy (sub1, tmp) ;
+		tmp = strtok (NULL, ".") ;
+		strcpy (sub2, tmp) ;
+		sprintf (outfile, "%s_%s_%s", outpref, sub1, sub2) ;
+		printf ("mod03 file is : %s", file1) ;
+		therm = new modis_hdf (file0) ;
+		geom = new modis_hdf (file1) ;
 
-	for (i=0; i<n_datasets; i++) {
-		sds_id = SDselect(sd_id, i) ;
-		status = SDgetinfo (sds_id, name, &rank, dim_sizes, &num_type, 
-			&attributes) ;
-		if (!strcmp("EV_1KM_Emissive",name)) {
-			strcpy (attrb_name, "radiance_scales") ;
-			attnum = SDfindattr(sds_id, attrb_name) ;
-			SDattrinfo (sds_id, attnum, attrb_name, &data_type, &n_values) ;
-			rad_scales_emiss = new float [n_values] ;
-			SDreadattr (sds_id, attnum, rad_scales_emiss) ;
-			printf ("scale is : %f\r\n",rad_scales_emiss) ;
-		}
-
-
-		printf ("%d : %s\r\n",i, name) ;
+		mresamp->set_modis_hdfs (geom, therm) ;
+		mresamp->set_bounds (starty, startx, endy, endx, gspace) ;
+		mresamp->process() ;
+		mresamp->write_output (outfile) ;
+		delete therm ;
+		delete geom ;
 	}
+	fclose (fin) ;
+	delete mresamp ;
+	//modis_hdf *mfile = new modis_hdf (infile) ;
+
+	//delete mfile ;
+
+	cout << "program done" << endl ;
 
 
 
